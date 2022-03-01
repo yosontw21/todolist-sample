@@ -1,48 +1,35 @@
 const http = require('http');
-const { v4: uuidv4 } = require('uuid');
+const port = 3005;
+const sucHandle = require('./successHandle');
 const errHandle = require('./errorHandle');
+const headers = require('./header');
+
+const { v4: uuidv4 } = require('uuid');
+
 const todos = [];
 
 const requestListener = (req, res) => {
-	const headers = {
-		'Access-Control-Allow-Headers':
-			'Content-Type, Authorization, Content-Length, X-Requested-With',
-		'Access-Control-Allow-Origin': '*',
-		'Access-Control-Allow-Methods': 'PATCH, POST, GET,OPTIONS,DELETE',
-		'Content-Type': 'application/json'
-	};
+	const reqUrl = req.url;
+	const reqMethod = req.method;
+	const todoId = reqUrl.startsWith('/todos/');
+
 	let body = '';
 	req.on('data', (chuck) => {
 		body += chuck;
 	});
-	req.on('end', () => {});
-	if (req.url == '/todos' && req.method == 'GET') {
-		res.writeHead(200, headers);
-		res.write(
-			JSON.stringify({
-				status: 'success',
-				data: todos
-			})
-		);
-		res.end();
-	} else if (req.url == '/todos' && req.method == 'POST') {
+	if (reqUrl == '/todos' && reqMethod == 'GET') {
+		sucHandle(res, todos);
+	} else if (reqUrl == '/todos' && reqMethod == 'POST') {
 		req.on('end', () => {
 			try {
 				const title = JSON.parse(body).title;
 				if (title !== undefined) {
-					const todo = {
+					const addTodo = {
 						title: title,
 						id: uuidv4()
 					};
-					todos.push(todo);
-					res.writeHead(200, headers);
-					res.write(
-						JSON.stringify({
-							status: 'success',
-							data: todos
-						})
-					);
-					res.end();
+					todos.push(addTodo);
+					sucHandle(res, todos);
 				} else {
 					errHandle(res);
 				}
@@ -50,51 +37,45 @@ const requestListener = (req, res) => {
 				errHandle(res);
 			}
 		});
-	} else if (req.url == '/todos' && req.method == 'DELETE') {
-		todos.length = 0;
-		res.writeHead(200, headers);
-		res.write(
-			JSON.stringify({
-				status: 'success',
-				message: '刪除所以代辦事項成功',
-				data: todos
-			})
-		);
-		res.end();
-	} else if (req.url.startsWith('/todos/') && req.method == 'DELETE') {
-		const id = req.url.split('/').pop();
-		const index = todos.findIndex((element) => element.id == id);
-		if (index !== -1) {
-			todos.splice(index, 1);
-			res.writeHead(200, headers);
+	} else if (reqUrl == '/todos' && reqMethod == 'DELETE') {
+		if (todos.length === 0) {
+			res.writeHead(400, headers);
 			res.write(
 				JSON.stringify({
-					status: 'success',
-					message: '刪除單筆代辦事項成功',
-					data: todos
+					status: 'error',
+					message: '刪除失敗! 目前代辦沒有任何資料'
 				})
 			);
 			res.end();
 		} else {
+			todos.length = 0;
+			res.writeHead(200, headers);
+			res.write(
+				JSON.stringify({
+					status: 'success',
+					message: '刪除所有代辦成功'
+				})
+			);
+			res.end();
+		}
+	} else if (todoId && reqMethod == 'DELETE') {
+		const id = reqUrl.split('/').pop();
+		const index = todos.findIndex((el) => el.id == id);
+		if (index !== -1) {
+			todos.splice(index, 1);
+			sucHandle(res, todos);
+		} else {
 			errHandle(res);
 		}
-		console.log(id, index);
-	} else if (req.url.startsWith('/todos/') && req.method == 'PATCH') {
+	} else if (todoId && reqMethod == 'PATCH') {
 		req.on('end', () => {
 			try {
 				const todo = JSON.parse(body).title;
-				const id = req.url.split('/').pop();
-				const index = todos.findIndex((element) => element.id == id);
+				const id = reqUrl.split('/').pop();
+				const index = todos.findIndex((el) => el.id == id);
 				if (todo !== undefined && index !== -1) {
 					todos[index].title = todo;
-					res.writeHead(200, headers);
-					res.write(
-						JSON.stringify({
-							status: 'success',
-							data: todos
-						})
-					);
-					res.end();
+					sucHandle(res, todos);
 				} else {
 					errHandle(res);
 				}
@@ -102,14 +83,15 @@ const requestListener = (req, res) => {
 				errHandle(res);
 			}
 		});
-	} else if (req.method == 'OPTIONS') {
+	} else if (reqMethod == 'OPTIONS') {
 		res.writeHead(200, headers);
 		res.end();
 	} else {
 		res.writeHead(404, headers);
 		res.write(
 			JSON.stringify({
-				status: 'error'
+				status: 'error',
+				message: '路由或是格式資料錯誤 !'
 			})
 		);
 		res.end();
@@ -117,4 +99,4 @@ const requestListener = (req, res) => {
 };
 
 const server = http.createServer(requestListener);
-server.listen(process.env.PORT || 3005);
+server.listen(port);
